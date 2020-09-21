@@ -1,11 +1,30 @@
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "support.h"
 
 
-const int threads = 4;
+const int threads = 256;
+
+void memset_rand(uint8 *buf, int N) {
+  for (int i=0; i<N; i++)
+    buf[i] = rand() & 0xFF;
+}
+
+void histogram(int *hist, uint8 *buff, int N) {
+  for (int i=0; i<N; i++) // 1
+    hist[buff[i]]++;      // 1
+}
+
+int histogram_sum(int *hist, int N) {
+  int sum = 0;
+  for (int i=0; i<N; i++)
+    sum += hist[i];
+  return sum;
+}
 
 
 // Each thread computes pairwise product of multiple components of vector.
@@ -28,26 +47,101 @@ const int threads = 4;
 // 4. Wait for all threads within the block to finish.
 // 5. Reduce the sum in the cache to a single value in binary tree fashion.
 // 6. Store this per-block sum into a partial sum array.
-__global__ void kernel(float *c, float *a, float *b, int N) {
-  __shared__ float cache[threads];
+__global__ void kernel(int *hist, uint8 *buff, int N) {
   int i = threadIdx.x + blockIdx.x * blockDim.x;
-  int t = threadIdx.x, sum = 0;
+
+  while (i < N) {
+    atomicAdd(&hist[buff[i]], 1);
+    i += blockDim.x * gridDim.x;
+  }
+}
+
+
+__global__ void kernel_shared(int *hist, uint8 *buff, int N) {
+  __shared__ int temp[threads];
+  int i = threadIdx.x + blockIdx.x * blockDim.x;
+  int t = threadIdx.x;
   
-  while (i < N) {                // 1
-    sum += a[i] * b[i];          // 1
-    i += blockDim.x * gridDim.x; // 2
-  }
-  cache[t] = sum; // 3
+  temp[t] = 0;
+  __syncthreads();
 
-  __syncthreads(); // 4
-  int T = blockDim.x / 2;                // 5
-  while (T != 0) {                       // 5
-    if (t < T) cache[t] += cache[t + T]; // 5
-    __syncthreads();                     // 5
-    T /= 2;                              // 5
+  while (i < N) {
+    atomicAdd(&temp[buff[i]], 1);
+    i += blockDim.x * gridDim.x;
   }
+  __syncthreads();
 
-  if (t == 0) c[blockIdx.x] = cache[0]; // 6
+  atomicAdd(&hist[t], temp[t]);
+}
+
+
+int run_cpu(uint8* buff, int N) {
+  int H = 256;
+  int H1 = H * sizeof(int);
+
+  int *hist = (int*) malloc(H1);
+  memset(hist, 0, H1);
+
+  clock_t begin = clock();
+  histogram(hist, buff, N);
+  clock_t end = clock();
+  
+  double duration = (double) (end - begin) / CLOCKS_PER_SEC;
+  printf("CPU execution time: %3.1f ms\n", duration * 1000);
+  printf("CPU Histogram sum: %d\n", histogram_sum(hist, H));
+
+  free(hist);
+  return 0;
+}
+
+
+int run_gpu(uint8 *buff, int N, int shared) {
+  int H = 256;
+  int N1 = N * sizeof(uint8);
+  int H1 = H * sizeof(int);
+
+  uint8 *buffD;
+  int *hist, *histD;
+  hist = (int*) malloc(H1);
+
+  cudaEvent_t start, stop;
+  TRY(cudaEventCreate(&start));
+  TRY(cudaEventCreate(&stop));
+  TRY(cudaEventRecord(start, 0));
+
+  TRY(cudaMalloc(&buffD, N1));
+  TRY(cudaMemcpy(buffD, buff, N1, cudaMemcpyHostToDevice));
+  TRY(cudaMalloc(&histD, H1));
+  TRY(cudaMemset(histD, 0, H));
+
+  cudaDeviceProp p;
+  TRY(cudaGetDeviceProperties(&p, 0));
+  int blocks = 2 * p.multiProcessorCount;
+  if (!shared) kernel<<<blocks, threads>>>(histD, buffD, N);
+  else kernel_shared<<<blocks, threads>>>(histD, buffD, N);
+
+  float duration;
+  TRY( cudaMemcpy(hist, histD, H1, cudaMemcpyDeviceToHost) );
+  TRY( cudaEventRecord(stop, 0) );
+  TRY( cudaEventSynchronize(stop) );
+  TRY( cudaEventElapsedTime(&duration, start, stop) );
+  printf("GPU execution time: %3.1f ms\n", duration);
+  printf("GPU Histogram sum: %d\n", histogram_sum(hist, H));
+
+  int* histH = (int*) malloc(H1);
+  memset(histH, 0, H1);
+  histogram(histH, buff, N);
+  int cmp = memcmp(hist, histH, H1);
+  if (cmp == 0) printf("GPU Histogram verified.\n");
+  else printf("GPU Histogram is wrong!\n");
+
+  TRY(cudaEventDestroy(start));
+  TRY(cudaEventDestroy(stop));
+  TRY(cudaFree(histD));
+  TRY(cudaFree(buffD));
+  free(histH);
+  free(hist);
+  return 0;
 }
 
 
@@ -60,39 +154,24 @@ __global__ void kernel(float *c, float *a, float *b, int N) {
 // 7. Reduce the partial sum C to a single value, the dot product (on CPU).
 // 8. Validate if the dot product is correct (on CPU).
 int main() {
-  int N = 10;                     // 1
-  size_t NB = N * sizeof(float);  // 1
-  float *a = (float*) malloc(NB); // 1
-  float *b = (float*) malloc(NB); // 1
-  for (int i=0; i<N; i++) { // 2
-    a[i] = (float) 2*i;     // 2
-    b[i] = (float) i;       // 2
-  }                         // 2
+  int N = 1000000;
+  int N1 = N * sizeof(uint8);
 
-  int threads = 2;                             // 3
-  int blocks = MAX(CEILDIV(N, threads), 2);    // 3
-  size_t NC = blocks * sizeof(float);          // 3
-  float* cpartial = (float*) malloc(NC);       // 3
+  uint8 *buff = (uint8*) malloc(N1);
+  memset_rand(buff, N1);
 
-  float *aD, *bD, *cpartialD;        // 4
-  TRY( cudaMalloc(&aD, NB) );        // 4
-  TRY( cudaMalloc(&bD, NB) );        // 4
-  TRY( cudaMalloc(&cpartialD, NC) ); // 4
-  TRY( cudaMemcpy(aD, a, NB, cudaMemcpyHostToDevice) ); // 4
-  TRY( cudaMemcpy(bD, b, NB, cudaMemcpyHostToDevice) ); // 4
+  printf("CPU Histogram ...\n");
+  run_cpu(buff, N);
+  printf("\n");
 
-  kernel<<<blocks, threads>>>(cpartialD, aD, bD, N); // 5
+  printf("GPU Histogram: atomic ...\n");
+  run_gpu(buff, N, 0);
+  printf("\n");
 
-  TRY( cudaMemcpy(cpartial, cpartialD, NC, cudaMemcpyDeviceToHost) ); // 6
-  float c = SUM_ARRAY(cpartial, blocks); // 7
+  printf("GPU Histogram: shared + atomic ...\n");
+  run_gpu(buff, N, 1);
+  printf("\n");
 
-  printf("a = "); PRINTVEC(a, N); printf("\n");
-  printf("b = "); PRINTVEC(b, N); printf("\n");
-  printf("a .* b = %.1f\n", c);
-
-  float cexpected = (float) 2 * SUM_SQUARES(N-1); // 8
-  if (c != cexpected) {                           // 8
-    fprintf(stderr, "ERROR: a .* b != %.1f\n", cexpected);
-  }
+  free(buff);
   return 0;
 }

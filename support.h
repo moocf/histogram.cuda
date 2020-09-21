@@ -5,7 +5,7 @@
 
 
 #ifndef TRY_CUDA
-inline void try_cuda(cudaError err, const char* exp, const char* func, int line, const char* file) {
+inline void try_cuda(cudaError err, const char *exp, const char *func, int line, const char *file) {
   if (err == cudaSuccess) return;
   fprintf(stderr,
     "%s: %s\n"
@@ -50,7 +50,7 @@ float sum_array(float *x, int N) {
 
 
 #ifndef PRINTVEC
-inline void printvec(float* x, int N) {
+inline void printvec(float *x, int N) {
   printf("{");
   for (int i = 0; i < N - 1; i++)
     printf("%.1f, ", x[i]);
@@ -97,4 +97,15 @@ inline int ceildiv(int x, int y) {
 // Finds minimum value.
 // MIN(2, 3) = 2
 #define MIN(x, y) ((x) < (y)? (x) : (y))
+#endif
+
+
+#ifndef UINT
+typedef unsigned int uint;
+#define UINT uint
+#endif
+
+#ifndef UINT8
+typedef unsigned char uint8;
+#define UINT8 uint8
 #endif
