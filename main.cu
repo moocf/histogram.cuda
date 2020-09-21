@@ -27,51 +27,51 @@ int histogram_sum(int *hist, int N) {
 }
 
 
-// Each thread computes pairwise product of multiple components of vector.
-// Since there are 10 components, but only a maximum of 4 total threads,
-// each thread pairwise product of its component, and shifts by a stride
-// of the total number of threads. This is done as long as it does not
-// exceed the length of the vector. Each thread maintains the sum of the
-// pairwise products it calculates.
+// Each thread atomically increments the bytes in buffer meant for it.
+// This however leads to high contention to the 256 locations in the
+// global memory.
 // 
-// Once pairiwise product calculation completes, the per-thread sum is
-// stored in a cache, and then all threads in a block sync up to calculate
-// the sum for the entire block in a binary tree fashion (in log N steps).
-// The overall sum of each block is then stored in an array, which holds
-// this partial sum. This partial sum is completed on the CPU. Hence, our
-// dot product is complete.
-// 
-// 1. Compute sum of pairwise product at respective index, while within bounds.
-// 2. Shift to the next component, by a stride of total no. of threads (4).
-// 3. Store per-thread sum in shared cache (for further reduction).
-// 4. Wait for all threads within the block to finish.
-// 5. Reduce the sum in the cache to a single value in binary tree fashion.
-// 6. Store this per-block sum into a partial sum array.
+// 1. Get byte at buffer for this thread.
+// 2. Atomically increment appropriate index in histogram.
+// 3. Shift to the next byte, by a stride.
 __global__ void kernel(int *hist, uint8 *buff, int N) {
   int i = threadIdx.x + blockIdx.x * blockDim.x;
 
   while (i < N) {
-    atomicAdd(&hist[buff[i]], 1);
-    i += blockDim.x * gridDim.x;
+    atomicAdd(&hist[buff[i]], 1); // 1, 2
+    i += blockDim.x * gridDim.x;  // 3
   }
 }
 
 
+// Each thread atomically increments the bytes in buffer meant for it.
+// This is done in the shared thread block memory first, until the
+// buffer is consumed. Then each thread in the block updates the
+// histogram in the global memory atomically. This reduces global
+// memory contention.
+// 
+// 1. Initialize shared memory (of size 256).
+// 2. Get byte at buffer for this thread.
+// 3. Atomically increment appropriate index in shared memory.
+// 4. Shift to the next byte, by a stride.
+// 5. Wait for all threads within the block to finish.
+// 5. Reduce the sum in the cache to a single value in binary tree fashion.
+// 6. Atomically update per-block histogram into global histogram.
 __global__ void kernel_shared(int *hist, uint8 *buff, int N) {
   __shared__ int temp[threads];
   int i = threadIdx.x + blockIdx.x * blockDim.x;
   int t = threadIdx.x;
   
-  temp[t] = 0;
-  __syncthreads();
+  temp[t] = 0;     // 1
+  __syncthreads(); // 1
 
   while (i < N) {
-    atomicAdd(&temp[buff[i]], 1);
-    i += blockDim.x * gridDim.x;
+    atomicAdd(&temp[buff[i]], 1); // 2, 3
+    i += blockDim.x * gridDim.x;  // 4
   }
-  __syncthreads();
+  __syncthreads(); // 5
 
-  atomicAdd(&hist[t], temp[t]);
+  atomicAdd(&hist[t], temp[t]); // 6
 }
 
 
@@ -145,14 +145,6 @@ int run_gpu(uint8 *buff, int N, int shared) {
 }
 
 
-// 1. Allocate space for 2 vectors A, B (of length 10).
-// 2. Define vectors A and B.
-// 3. Allocate space for partial sum C (of length "blocks").
-// 4. Copy A, B from host memory to device memory (GPU).
-// 5. Execute kernel with 2 threads per block, and max. 2 blocks (2*2 = 4).
-// 6. Wait for kernel to complete, and copy partial sum C from device to host memory.
-// 7. Reduce the partial sum C to a single value, the dot product (on CPU).
-// 8. Validate if the dot product is correct (on CPU).
 int main() {
   int N = 1000000;
   int N1 = N * sizeof(uint8);
