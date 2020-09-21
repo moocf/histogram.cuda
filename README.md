@@ -1,4 +1,4 @@
-The scalar product of two vectors is called dot product.
+Histogram represents a count of the frequency of each element in a data set.
 
 ```c
 Each thread computes pairwise product of multiple components of vector.
