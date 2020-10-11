@@ -48,9 +48,10 @@ GPU Histogram sum: 1000000
 GPU Histogram verified.
 ```
 
-See [main.cu] for code.
+See [main.cu] for code, [main.ipynb] for notebook.
 
 [main.cu]: main.cu
+[main.ipynb]: https://colab.research.google.com/drive/1wsCJ-O18l7XozV1quKmSXmJz1cQP57ZP?usp=sharing
 
 
 ### references
