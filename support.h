@@ -5,16 +5,16 @@
 
 
 #ifndef TRY_CUDA
-inline void try_cuda(cudaError err, const char *exp, const char *func, int line, const char *file) {
-  if (err == cudaSuccess) return;
-  fprintf(stderr,
-    "%s: %s\n"
-    "  in expression %s\n"
-    "  at %s:%d in %s\n",
-    cudaGetErrorName(err), cudaGetErrorString(err),
-    exp,
-    func, line, file);
-  exit(err);
+inline void try_cuda(cudaError err, const char* exp, const char* func, int line, const char* file) {
+    if (err == cudaSuccess) return;
+    fprintf(stderr,
+        "%s: %s\n"
+        "  in expression %s\n"
+        "  at %s:%d in %s\n",
+        cudaGetErrorName(err), cudaGetErrorString(err),
+        exp,
+        func, line, file);
+    exit(err);
 }
 
 // Prints an error message and exits, if CUDA expression fails.
@@ -36,11 +36,11 @@ void __syncthreads();
 
 
 #ifndef SUM_ARRAY
-float sum_array(float *x, int N) {
-  float a = 0;
-  for (int i=0; i<N; i++)
-    a += x[i];
-  return a;
+float sum_array(float* x, int N) {
+    float a = 0;
+    for (int i = 0; i < N; i++)
+        a += x[i];
+    return a;
 }
 
 // Finds sum of array elements.
@@ -50,12 +50,12 @@ float sum_array(float *x, int N) {
 
 
 #ifndef PRINTVEC
-inline void printvec(float *x, int N) {
-  printf("{");
-  for (int i = 0; i < N - 1; i++)
-    printf("%.1f, ", x[i]);
-  if (N > 0) printf("%.1f", x[N - 1]);
-  printf("}");
+inline void printvec(float* x, int N) {
+    printf("{");
+    for (int i = 0; i < N - 1; i++)
+        printf("%.1f, ", x[i]);
+    if (N > 0) printf("%.1f", x[N - 1]);
+    printf("}");
 }
 
 // Prints a vector.
@@ -66,7 +66,7 @@ inline void printvec(float *x, int N) {
 
 #ifndef SUM_SQUARES
 inline int sum_squares(int x) {
-  return x * (x+1) * (2*x+1) / 6;
+    return x * (x + 1) * (2 * x + 1) / 6;
 }
 
 // Computes sum of squares of natural numbers.
@@ -77,7 +77,7 @@ inline int sum_squares(int x) {
 
 #ifndef CEILDIV
 inline int ceildiv(int x, int y) {
-  return (x + y-1) / y;
+    return (x + y - 1) / y;
 }
 
 // Computes rounded-up integer division.

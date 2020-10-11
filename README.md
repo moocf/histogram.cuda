@@ -34,16 +34,16 @@ kernel_shared():
 ```bash
 # OUTPUT
 CPU Histogram ...
-CPU execution time: 3.0 ms
+CPU execution time: 1.0 ms
 CPU Histogram sum: 1000000
 
 GPU Histogram: atomic ...
-GPU execution time: 1.4 ms
+GPU execution time: 1.5 ms
 GPU Histogram sum: 1000000
 GPU Histogram verified.
 
 GPU Histogram: shared + atomic ...
-GPU execution time: 1.2 ms
+GPU execution time: 0.3 ms
 GPU Histogram sum: 1000000
 GPU Histogram verified.
 ```
