@@ -21,7 +21,7 @@ buffer is consumed. Then each thread in the block updates the
 histogram in the global memory atomically. This reduces global
 memory contention.
 
-kernel_shared():
+kernelShared():
 1. Initialize shared memory (of size 256).
 2. Get byte at buffer for this thread.
 3. Atomically increment appropriate index in shared memory.
@@ -32,28 +32,32 @@ kernel_shared():
 ```
 
 ```bash
-# OUTPUT
-CPU Histogram ...
-CPU execution time: 1.0 ms
-CPU Histogram sum: 1000000
+$ nvcc -std=c++17 -Xcompiler -O3 main.cu
+$ ./a.out
 
-GPU Histogram: atomic ...
-GPU execution time: 1.5 ms
-GPU Histogram sum: 1000000
-GPU Histogram verified.
-
-GPU Histogram: shared + atomic ...
-GPU execution time: 0.3 ms
-GPU Histogram sum: 1000000
-GPU Histogram verified.
+# CPU Histogram ...
+# CPU execution time: 0.0 ms
+# CPU Histogram sum: 1000000
+#
+# GPU Histogram: atomic ...
+# GPU execution time: 1.1 ms
+# GPU Histogram sum: 1000000
+# GPU Histogram verified.
+#
+# GPU Histogram: shared + atomic ...
+# GPU execution time: 0.5 ms
+# GPU Histogram sum: 1000000
+# GPU Histogram verified.
 ```
 
-See [main.cu] for code, [main.ipynb] for notebook.
+See [main.cu] for code.
 
 [main.cu]: main.cu
-[main.ipynb]: https://colab.research.google.com/drive/1wsCJ-O18l7XozV1quKmSXmJz1cQP57ZP?usp=sharing
+
+<br>
+<br>
 
 
-### references
+## References
 
-- [CUDA by Example :: Jason Sanders, Edward Kandrot](http://www.mat.unimi.it/users/sansotte/cuda/CUDA_by_Example.pdf)
+- [CUDA by Example :: Jason Sanders, Edward Kandrot](https://gist.github.com/wolfram77/72c51e494eaaea1c21a9c4021ad0f320)
